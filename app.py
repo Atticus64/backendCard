@@ -5,21 +5,12 @@ import os
 
 load_dotenv()
 
-USER = os.getenv("user")
-PASSWORD = os.getenv("password")
-HOST = os.getenv("host")
-PORT = os.getenv("port")
-DBNAME = os.getenv("dbname")
-
+DB_URL = os.getenv("database_url")
 app = Flask(__name__)
 
 def get_db_conn():
     conn = psycopg2.connect(
-        user=USER,
-        password=PASSWORD,
-        host=HOST,
-        port=PORT,
-        dbname=DBNAME
+        DB_URL
     )
 
     return conn
