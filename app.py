@@ -36,8 +36,6 @@ def get_books():
     books = cursor.fetchall()
     conn.close()
 
-    def get(self):
-        return repo.get_all(), 200, {'Access-Control-Allow-Origin': '*'}
     return {
         "ok": True,
         "books": books
