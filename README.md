@@ -20,8 +20,7 @@ py -3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-> [!note] ❗ Tip
-> 
+> [!TIP]
 > Si agregas nuevas dependencias durante el desarrollo, recuerda:
 > Instálalas localmente con pip install <paquete>.
 > Actualiza el archivo con:
