@@ -34,6 +34,10 @@ def get_db_conn():
 def hello_world():
     return "<p>Hola api development!</p>"
 
+@app.route("/yomero")
+def yomero():
+    return "<p>Hello world!</p>"
+
 @app.route("/health")
 def health():
     return {
