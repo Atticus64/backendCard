@@ -79,6 +79,80 @@ def get_user(id):
         "user": user
     }
 
+# GET requests will be blocked
+@app.route('/get_type_read', methods=['POST'])
+def get_type():
+    request_data = request.get_json()
+
+    id = request_data['id']
+
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id_usuario
+        FROM usuario
+        WHERE nfc_id = %s
+    """, (id,))
+
+    data = cursor.fetchone()
+
+    if data is not None:
+        conn.close()
+        return  {
+            "ok": True,
+            "type": "user",
+        }
+    
+    cursor.execute("""
+        SELECT id_libro
+        FROM ejemplar
+        WHERE id_nfc = %s
+        """, (id,))
+    data = cursor.fetchone()
+    conn.close()
+
+    if data is not None:
+        return {
+            "ok": True,
+            "type": "book",
+        }
+
+    return {
+        "ok": False,
+        "msg": "NFC ID not found"
+    }
+
+
+@app.route("/books/nfc/<string:id>")
+def get_book_by_nfc(id):
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT book.id, book.nombre as titulo, autor.nombre as autor,   
+            book.reseña as reseña, portada_url, isbn, anio_publicacion
+        FROM ejemplar 
+        join book on ejemplar.id_libro = book.id
+        join autor on book.id_autor = autor.id_autor
+        WHERE ejemplar.id_nfc = %s
+                   """, (id,))
+
+    data = cursor.fetchone()
+
+    if data is None:
+        return {
+            "ok": False,
+            "msg": "Book not found"
+        }
+
+    book = Book.from_row(data)
+
+    conn.close()
+
+    return {
+        "ok": True,
+        "book": book.__dict__
+    }
+
 @app.route("/users/nfc/<string:id>")
 def get_user_by_nfc(id):
     conn = get_db_conn()
