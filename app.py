@@ -122,6 +122,154 @@ def get_type():
         "msg": "NFC ID not found"
     }
 
+@app.route("/prestamo", methods=['POST'])
+def create_prestamo():
+    # recibe el body el id_nfc del usuario y el id_nfc del ejemplar
+    request_data = request.get_json()
+    id_nfc_usuario = request_data.get("id_nfc_usuario")
+    id_nfc_ejemplar = request_data.get("id_nfc_ejemplar")
+    print(f"Creating prestamo for user {id_nfc_usuario} and ejemplar {id_nfc_ejemplar}")
+    if not all([id_nfc_usuario, id_nfc_ejemplar]):
+        fields = []
+        if id_nfc_usuario is None:
+            fields.append("id_nfc_usuario")
+        if id_nfc_ejemplar is None:
+            fields.append("id_nfc_ejemplar")
+             
+        return {
+            "ok": False,
+            "msg": "Missing required fields",
+            "fields": fields
+        }
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    # validar que el id_nfc del usuario exista
+    cursor.execute("SELECT id_usuario FROM usuario WHERE id_nfc = %s", (id_nfc_usuario,))
+    user = cursor.fetchone()
+    if user is None:
+        return {
+            "ok": False,
+            "msg": "User not found"
+        }
+    # validar que el id_nfc del ejemplar exista
+    cursor.execute("SELECT id_ejemplar FROM ejemplar WHERE id_nfc = %s", (id_nfc_ejemplar,))
+    ejemplar = cursor.fetchone()
+    if ejemplar is None:
+        return {
+            "ok": False,
+            "msg": "Ejemplar not found"
+        }
+
+    # ejemplo de query para insertar un prestamo
+    #INSERT INTO prestamo (
+    #    id_ejemplar,
+    #    fecha_devolucion,
+    #    id_usuario,
+    #    fecha_prestamo,
+    #    estatus
+    #) VALUES (
+    #    5000000001,                       -- id del ejemplar (debe existir en la tabla ejemplar)
+    #    '2025-06-10 23:59:59',     -- fecha de devolución estimada
+    #    4,                        -- id del usuario (debe existir en la tabla usuario)
+    #    NOW(),                     -- fecha actual como fecha del préstamo
+    #    'Activo'                   -- estatus actual del préstamo
+    #);
+
+    # verificar si el ejemplar ya está prestado
+    cursor.execute("""
+        SELECT id_prestamo FROM prestamo 
+        WHERE id_ejemplar = %s AND estatus = 'Activo'
+    """, (ejemplar[0],))
+
+    prestamo = cursor.fetchone()
+    if prestamo is not None:
+        return {
+            "ok": False,
+            "msg": "Ejemplar is already borrowed"
+        }
+
+    try:
+        # para verificar ejemplo, el prestamo dure un minuto 
+        #        NOW() + INTERVAL '15 days',  -- 15 days from now
+        # cursor.execute("""
+
+        # marcar el ejemplar como prestado
+        #     UPDATE ejemplar SET estatus = 'Prestado' WHERE id_ejemplar = %s
+        cursor.execute("""
+            UPDATE ejemplar SET disponibilidad = false
+            WHERE id_ejemplar = %s
+        """, (ejemplar[0],))
+        
+        
+        cursor.execute("""
+            INSERT INTO prestamo (
+                id_ejemplar,
+                fecha_devolucion,
+                id_usuario,
+                fecha_prestamo,
+                estatus
+            ) VALUES (
+                %s, 
+                NOW() + INTERVAL '1 minutes',
+                %s, 
+                NOW(), 
+                'Activo'
+            )
+        """, (ejemplar[0], user[0]))
+
+        conn.commit()
+
+    except psycopg2.Error as e:
+        conn.rollback()
+        return {
+            "ok": False,
+            "msg": f"Error creating prestamo: {e}"
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+    return {
+        "ok": True,
+        "msg": "Prestamo created successfully"
+    }
+
+@app.route("/ejemplar/nfc/<string:id>")
+def get_ejemplar_by_nfc(id):
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id_ejemplar, ejemplar.isbn, ejemplar.anio_publicacion, 
+        book.nombre as titulo, portada_url, autor.nombre as autor
+        FROM ejemplar 
+        join book on ejemplar.id_libro = book.id
+        join autor on book.id_autor = autor.id_autor
+        WHERE ejemplar.id_nfc = %s
+                   """, (id,))
+
+    data = cursor.fetchone()
+
+    if data is None:
+        return {
+            "ok": False,
+            "msg": "Ejemplar not found"
+        }
+
+    ejemplar = {
+        "id": data[0],
+        "isbn": data[1],
+        "año_publicacion": data[2],
+        "titulo": data[3],
+        "portada_url": data[4],
+        "autor": data[5]
+    }
+
+    conn.close()
+
+    return {
+        "ok": True,
+        "ejemplar": ejemplar
+    }
 
 @app.route("/books/nfc/<string:id>")
 def get_book_by_nfc(id):
