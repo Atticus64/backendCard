@@ -12,16 +12,19 @@ CORS(app)
 
 
 class Book:
-    def __init__(self, id, nombre, autor, reseña):
+    def __init__(self, id, nombre, autor, reseña, portada_url, isbn, anio):
         self.id = id
         self.nombre = nombre
         self.autor = autor
         self.reseña = reseña
+        self.portada_url = portada_url
+        self.isbn = isbn
+        self.year = anio
 
     
     @classmethod
     def from_row(cls, row):
-      return cls(row[0], row[1], row[2], row[3])
+      return cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
 
 def get_db_conn():
     conn = psycopg2.connect(
@@ -160,10 +163,11 @@ def get_books():
     #    WHERE book.id_autor = %s
     #               """, (id,))
     cursor.execute("""
-        SELECT book.id, book.nombre as titulo, autor.nombre as autor,   
-            book.reseña as reseña
+        SELECT DISTINCT ON (book.id) book.id, book.nombre as titulo, autor.nombre as autor,   
+            book.reseña as reseña, portada_url, isbn, anio_publicacion
         FROM book 
         join autor on book.id_autor = autor.id_autor
+        join ejemplar on book.id = ejemplar.id_libro
         order by book.id
     """)
 
