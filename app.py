@@ -91,7 +91,7 @@ def get_type():
     cursor.execute("""
         SELECT id_usuario
         FROM usuario
-        WHERE nfc_id = %s
+        WHERE id_nfc = %s
     """, (id,))
 
     data = cursor.fetchone()
@@ -152,15 +152,19 @@ def get_book_by_nfc(id):
         "ok": True,
         "book": book.__dict__
     }
+    
 
 @app.route("/users/nfc/<string:id>")
 def get_user_by_nfc(id):
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id_usuario as id, nombre, correo
+        SELECT id_usuario as id, usuario.nombre, correo, carrera.nombre as carrera,
+        tipo_usuario.nombre as tipo_usuario
         FROM usuario
-        WHERE nfc_id = %s
+        left join carrera on usuario.id_carrera = carrera.id_carrera
+        join tipo_usuario on usuario.id_tipo_usuario = tipo_usuario.id
+        WHERE id_nfc = %s
                    """, (id,))
 
     data = cursor.fetchone()
@@ -174,7 +178,9 @@ def get_user_by_nfc(id):
     user = {
         "id": data[0],
         "nombre": data[1],
-        "email": data[2]
+        "email": data[2],
+        "carrera": data[3],
+        "tipo_usuario": data[4]
     }
 
     conn.close()
@@ -182,6 +188,163 @@ def get_user_by_nfc(id):
     return {
         "ok": True,
         "user": user
+    }
+
+@app.route("/tipos_usuario")
+def get_types_user():
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, nombre
+        FROM tipo_usuario
+    """)
+
+    data = cursor.fetchall()
+
+    if len(data) == 0:
+        return {
+            "ok": False,
+            "msg": "No types found"
+        }
+
+    types = []
+    for row in data:
+        types.append({
+            "id": row[0],
+            "nombre": row[1]
+        })
+
+    conn.close()
+
+    return {
+        "ok": True,
+        "types": types
+    }
+
+@app.route("/user/create", methods=['POST'])
+def create_user():
+    # debe de venir en el body
+    # {
+    #   "nombre": "Nombre del usuario",
+    #   "email": "
+    #   "telefono"
+    #   "carrera": "ID de la carrera", puede ser null
+    #   "tipo_usuario": "ID del tipo de usuario",
+    #   "id_nfc": "ID del NFC"
+    # }   
+    #}
+    request_data = request.get_json()
+    nombre = request_data.get("nombre")
+    email = request_data.get("correo")
+    telefono = request_data.get("telefono")
+    carrera = request_data.get("carrera")
+    tipo_usuario = request_data.get("tipo_usuario")
+    id_nfc = request_data.get("id_nfc")
+
+    if not all([nombre, email, telefono, tipo_usuario, id_nfc]):
+
+        return {
+            "ok": False,
+            "msg": "Missing required fields"
+        }
+
+    conn = get_db_conn()
+    cursor = conn.cursor()
+
+    # validar que otro usuario no tenga el mismo correo
+    cursor.execute("SELECT id_usuario FROM usuario WHERE correo = %s", (email,))
+    existing_user = cursor.fetchone()
+    if existing_user is not None:
+        return {
+            "ok": False,
+            "msg": "User with this email already exists"
+        }
+    # validar si el id_nfc existe y volverlo nulo en la otra cuenta
+    cursor.execute("SELECT id_usuario FROM usuario WHERE id_nfc = %s", (id_nfc,))
+    existing_nfc = cursor.fetchone()
+    if existing_nfc is not None:
+        cursor.execute("UPDATE usuario SET id_nfc = NULL WHERE id_nfc = %s", (id_nfc,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return {
+                "ok": False,
+                "msg": "NFC ID not found in any user"
+            }
+    # validar que el tipo de usuario exista
+    cursor.execute("SELECT id FROM tipo_usuario WHERE id = %s", (tipo_usuario,))
+    existing_type = cursor.fetchone()
+    if existing_type is None:
+        return {
+            "ok": False,
+            "msg": "User type does not exist"
+        }
+    # validar que la carrera exista
+    if carrera is not None:
+        cursor.execute("SELECT id_carrera FROM carrera WHERE id_carrera = %s", (carrera,))
+        existing_career = cursor.fetchone()
+        if existing_career is None:
+            return {
+                "ok": False,
+                "msg": "Career does not exist"
+            }
+    else:
+        carrera = None
+    try:
+        # get last id_usuario
+        cursor.execute("SELECT MAX(id_usuario) FROM usuario")
+        last_id = cursor.fetchone()[0]
+
+        cursor.execute("""
+            INSERT INTO usuario (id_usuario, nombre, correo, telefono, id_carrera, id_tipo_usuario, fecha_registro, id_nfc)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)
+        """, (last_id + 1, nombre, email, telefono, carrera, tipo_usuario, id_nfc))
+        conn.commit()   
+    except psycopg2.Error as e:
+        conn.rollback()
+        return {
+            "ok": False,
+            "msg": f"Error creating user: {e}"
+        }
+    finally:
+        cursor.close()
+        conn.close()   
+
+    return {
+        "ok": True,
+        "msg": "User created successfully"
+    }
+    
+    
+
+@app.route("/carreras")
+def get_carreras():
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id_carrera, nombre
+        FROM carrera
+    """)
+
+    data = cursor.fetchall()
+
+    if len(data) == 0:
+        return {
+            "ok": False,
+            "msg": "No carreras found"
+        }
+
+    carreras = []
+    for row in data:
+        carreras.append({
+            "id": row[0],
+            "nombre": row[1]
+        })
+
+    conn.close()
+
+    return {
+        "ok": True,
+        "carreras": carreras
     }
 
 @app.route("/books/autor")
