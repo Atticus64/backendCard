@@ -234,6 +234,73 @@ def create_prestamo():
         "msg": "Prestamo created successfully"
     }
 
+
+@app.route("/prestamo/devolver", methods=['POST'])
+def devolver_prestamo():
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    # recibe? el id_nfc del ejemplar
+    
+    request_data = request.get_json()
+    id_nfc_ejemplar = request_data.get("id_nfc_ejemplar")
+    if id_nfc_ejemplar is None:
+        return {
+            "ok": False,
+            "msg": "Missing required fields",
+            "fields": ["id_nfc_ejemplar"]
+        }
+        
+    # validar que el id_nfc del ejemplar exista
+    cursor.execute("SELECT id_ejemplar FROM ejemplar WHERE id_nfc = %s", (id_nfc_ejemplar,))
+    ejemplar = cursor.fetchone()
+    if ejemplar is None:
+        return {
+            "ok": False,
+            "msg": "Ejemplar no encontrado"
+        }
+        
+    # verificar si el ejemplar está prestado
+    cursor.execute("""
+        SELECT id_prestamo FROM prestamo
+        WHERE id_ejemplar = %s AND estatus = 'Activo'
+    """, (ejemplar[0],))
+    prestamo = cursor.fetchone()
+    if prestamo is None:
+        return {
+            "ok": False,
+            "msg": "El ejemplar no está prestado o ya ha sido devuelto"
+        }
+    try:
+        # actualizar el estatus del prestamo a 'Devuelto'
+        cursor.execute("""
+            UPDATE prestamo 
+            SET estatus = 'Devuelto', fecha_devolucion = NOW()
+            WHERE id_prestamo = %s
+        """, (prestamo[0],))
+
+        # marcar el ejemplar como disponible
+        cursor.execute("""
+            UPDATE ejemplar SET disponibilidad = true
+            WHERE id_ejemplar = %s
+        """, (ejemplar[0],))
+
+        conn.commit()
+
+    except psycopg2.Error as e:
+        conn.rollback()
+        return {
+            "ok": False,
+            "msg": f"Error regresando prestamo: {e}"
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+    return {
+        "ok": True,
+        "msg": "Prestamo devuelto exitosamente"
+    }
+
 @app.route("/ejemplar/nfc/<string:id>")
 def get_ejemplar_by_nfc(id):
     conn = get_db_conn()
